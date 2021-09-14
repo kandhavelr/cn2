@@ -1,0 +1,396 @@
+########
+### Config file for the IT Cloud Profile-2 ####
+### Expose the service on NodePort 
+### Namespace Isolation
+### HA Proxy as load balancer
+### Ingress policies
+########
+#######################
+## Tier-1: Front End ##
+#######################
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: profile-2-tier-1-ns
+  annotations:
+    opencontrail.org/isolation: "true"
+---
+## Client POD
+apiVersion: v1
+kind: Pod
+metadata:
+  name: pod-client
+  namespace: profile-2-tier-1-ns
+spec:
+  containers:
+    - name: pod-client
+      image: svl-artifactory.juniper.net/atom-docker-remote/library/ubuntu-upstart
+      securityContext:
+       capabilities:
+        add:
+        - SYS_ADMIN
+        - NET_ADMIN
+        - NET_RAW
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: apple-app-echo
+  namespace: profile-2-tier-1-ns
+spec:
+  selector:
+    matchLabels:
+      app: apple-echo
+  replicas: 10
+  template:
+    metadata:
+      labels:
+        app: apple-echo
+    spec:
+      containers:
+      - name: apple-echo
+        image: svl-artifactory.juniper.net/atom-docker/cn2/http-echo:latest
+        args:
+          - "-text=apple-echo"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: apple-service-test
+  namespace: profile-2-tier-1-ns
+spec:
+  selector:
+    app: apple-echo
+  ports:
+    - port: 5678 # Default port for image
+---
+apiVersion: extensions/v1beta1
+kind: Ingress
+metadata:
+  name: nginx-lb-ingress
+  namespace: profile-2-tier-1-ns
+  annotations:
+    ingress.kubernetes.io/rewrite-target: /
+spec:
+  rules:
+  - http:
+      paths:
+        - path: /apple
+          backend:
+            serviceName: apple-service-test
+            servicePort: 5678
+---
+#######################
+## Tier-2: Middleware##
+#######################
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: profile-2-tier-2-ns
+  annotations:
+    opencontrail.org/isolation: "true"
+---
+## Client POD
+apiVersion: v1
+kind: Pod
+metadata:
+  name: pod-client
+  namespace: profile-2-tier-2-ns
+spec:
+  containers:
+    - name: pod-client
+      image: svl-artifactory.juniper.net/atom-docker-remote/library/ubuntu-upstart
+      securityContext:
+       capabilities:
+        add:
+        - SYS_ADMIN
+        - NET_ADMIN
+        - NET_RAW
+---
+## Nginx POD-1
+apiVersion: v1
+kind: Pod
+metadata:
+  annotations:
+    k8s.v1.cni.cncf.io/network-status: |-
+    openshift.io/scc: anyuid
+  labels:
+    app: webapp-cip
+  name: pod-nginx-1
+  namespace: profile-2-tier-2-ns
+spec:
+  containers:
+  - image: svl-artifactory.juniper.net/atom-docker-remote/library/nginx
+    imagePullPolicy: Always
+    name: pod-nginx-1
+    ports:
+    - containerPort: 80
+      protocol: TCP
+    resources: {}
+    securityContext:
+      capabilities:
+        drop:
+        - MKNOD
+    terminationMessagePath: /dev/termination-log
+    terminationMessagePolicy: File
+  dnsPolicy: ClusterFirst
+  priority: 0
+  restartPolicy: Always
+  schedulerName: default-scheduler
+  securityContext:
+    seLinuxOptions:
+      level: s0:c26,c0
+  serviceAccount: default
+  serviceAccountName: default
+  terminationGracePeriodSeconds: 30
+---
+## Nginx POD-2
+apiVersion: v1
+kind: Pod
+metadata:
+  annotations:
+    k8s.v1.cni.cncf.io/network-status: |-
+    openshift.io/scc: anyuid
+  labels:
+    app: webapp-cip
+  name: pod-nginx-2
+  namespace: profile-2-tier-2-ns
+spec:
+  containers:
+  - image: svl-artifactory.juniper.net/atom-docker-remote/library/nginx
+    imagePullPolicy: Always
+    name: pod-nginx-2
+    ports:
+    - containerPort: 80
+      protocol: TCP
+    resources: {}
+    securityContext:
+      capabilities:
+        drop:
+        - MKNOD
+    terminationMessagePath: /dev/termination-log
+    terminationMessagePolicy: File
+  dnsPolicy: ClusterFirst
+  priority: 0
+  restartPolicy: Always
+  schedulerName: default-scheduler
+  securityContext:
+    seLinuxOptions:
+      level: s0:c26,c0
+  serviceAccount: default
+  serviceAccountName: default
+  terminationGracePeriodSeconds: 30
+---
+## NodePort Service
+apiVersion: v1
+kind: Service
+metadata:
+  name: cip-svc-a
+  namespace: profile-2-tier-2-ns
+spec:
+  ports:
+  - port: 80
+    protocol: TCP
+    targetPort: 80
+  selector:
+    app: webapp-cip
+  sessionAffinity: None
+  type: NodePort
+---
+#######################
+## Tier-3: Back End  ##
+#######################
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: profile-2-tier-3-ns
+  annotations:
+    opencontrail.org/isolation: "true"
+---
+## Client POD
+apiVersion: v1
+kind: Pod
+metadata:
+  name: pod-client
+  namespace: profile-2-tier-3-ns
+spec:
+  containers:
+    - name: pod-client
+      image: svl-artifactory.juniper.net/atom-docker-remote/library/ubuntu-upstart
+      securityContext:
+       capabilities:
+        add:
+        - SYS_ADMIN
+        - NET_ADMIN
+        - NET_RAW
+---
+## Nginx POD-1
+apiVersion: v1
+kind: Pod
+metadata:
+  annotations:
+    k8s.v1.cni.cncf.io/network-status: |-
+    openshift.io/scc: anyuid
+  labels:
+    app: tier-3-webapp-cip
+  name: pod-nginx-1
+  namespace: profile-2-tier-3-ns
+spec:
+  containers:
+  - image: svl-artifactory.juniper.net/atom-docker-remote/library/nginx
+    imagePullPolicy: Always
+    name: pod-nginx-1
+    ports:
+    - containerPort: 80
+      protocol: TCP
+    resources: {}
+    securityContext:
+      capabilities:
+        drop:
+        - MKNOD
+    terminationMessagePath: /dev/termination-log
+    terminationMessagePolicy: File
+  dnsPolicy: ClusterFirst
+  priority: 0
+  restartPolicy: Always
+  schedulerName: default-scheduler
+  securityContext:
+    seLinuxOptions:
+      level: s0:c26,c0
+  serviceAccount: default
+  serviceAccountName: default
+  terminationGracePeriodSeconds: 30
+---
+## Nginx POD-2
+apiVersion: v1
+kind: Pod
+metadata:
+  annotations:
+    k8s.v1.cni.cncf.io/network-status: |-
+    openshift.io/scc: anyuid
+  labels:
+    app: tier-3-webapp-cip
+  name: pod-nginx-2
+  namespace: profile-2-tier-3-ns
+spec:
+  containers:
+  - image: svl-artifactory.juniper.net/atom-docker-remote/library/nginx
+    imagePullPolicy: Always
+    name: pod-nginx-2
+    ports:
+    - containerPort: 80
+      protocol: TCP
+    resources: {}
+    securityContext:
+      capabilities:
+        drop:
+        - MKNOD
+    terminationMessagePath: /dev/termination-log
+    terminationMessagePolicy: File
+  dnsPolicy: ClusterFirst
+  priority: 0
+  restartPolicy: Always
+  schedulerName: default-scheduler
+  securityContext:
+    seLinuxOptions:
+      level: s0:c26,c0
+  serviceAccount: default
+  serviceAccountName: default
+  terminationGracePeriodSeconds: 30
+---
+## Nginx POD-3
+apiVersion: v1
+kind: Pod
+metadata:
+  annotations:
+    k8s.v1.cni.cncf.io/network-status: |-
+    openshift.io/scc: anyuid
+  labels:
+    app: tier-3-webapp-cip
+  name: pod-nginx-3
+  namespace: profile-2-tier-3-ns
+spec:
+  containers:
+  - image: svl-artifactory.juniper.net/atom-docker-remote/library/nginx
+    imagePullPolicy: Always
+    name: pod-nginx-3
+    ports:
+    - containerPort: 80
+      protocol: TCP
+    resources: {}
+    securityContext:
+      capabilities:
+        drop:
+        - MKNOD
+    terminationMessagePath: /dev/termination-log
+    terminationMessagePolicy: File
+  dnsPolicy: ClusterFirst
+  priority: 0
+  restartPolicy: Always
+  schedulerName: default-scheduler
+  securityContext:
+    seLinuxOptions:
+      level: s0:c26,c0
+  serviceAccount: default
+  serviceAccountName: default
+  terminationGracePeriodSeconds: 30
+---
+## NodePort Service
+apiVersion: v1
+kind: Service
+metadata:
+  name: cip-svc-a
+  namespace: profile-2-tier-3-ns
+spec:
+  ports:
+  - port: 80
+    protocol: TCP
+    targetPort: 80
+  selector:
+    app: webapp-cip
+  sessionAffinity: None
+  type: NodePort
+---
+#######################
+## Firewall Policies ##
+#######################
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: policy-tier-1
+  namespace: profile-2-tier-1-ns
+spec:
+  ingress:
+  - ports:
+    - port: 8443
+  egress:
+  - ports:
+    - port: 8080
+      protocol: TCP
+  podSelector:
+    matchLabels:
+      app: apple-echo
+  policyTypes:
+  - Ingress
+  - Egress
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: policy-tier-2
+  namespace: profile-2-tier-2-ns
+spec:
+  ingress:
+  - ports:
+    - port: 8080
+      protocol: TCP
+  egress:
+  - ports:
+    - port: 3306
+      protocol: TCP
+  podSelector:
+    matchLabels:
+      app: webapp-cip
+  policyTypes:
+  - Ingress
+  - Egress
